@@ -31,25 +31,50 @@ cp .env.exemplo .env     # e preencha as senhas
 docker compose --env-file .env up -d
 ```
 
-## Restaurar os dados de produção
+## Carregar os cadastros de produção (caminho usado hoje)
 
-1. No GLPI de produção, em **Administração → Manutenção**, gere o backup SQL
-   e baixe o arquivo.
-2. Envie para a VPS, em `~/glpi-teste/dump/` (o MobaXterm faz isso pelo painel
-   de arquivos).
-3. Rode:
+Copia pela API a estrutura real da empresa — entidades, categorias, usuários,
+base de conhecimento — sem o histórico de chamados. É o suficiente para testar
+mudanças de tela e a integração do atendimento do WhatsApp.
 
 ```bash
-./scripts/restaurar-dump.sh dump/glpi-producao.sql
+./scripts/abrir-tunel.sh                              # deixe rodando
+node --env-file=.env scripts/carregar-cadastros.mjs   # em outra janela
 ```
 
-O script restaura o dump, aponta a URL para o endereço de teste e **desliga o
-envio de e-mails**, para o ambiente de teste não notificar cliente nenhum.
+Pode rodar de novo quando quiser: o que já existe é reaproveitado pelo nome,
+não duplicado. Use `--so-contar` para só comparar os dois lados.
 
-## Depois de restaurar
+O túnel existe porque o site está protegido por senha no Apache, e essa senha
+disputaria o mesmo cabeçalho que o token da API.
 
-- Os logins são os mesmos de produção, com as mesmas senhas.
-- Confira em **Configurar → Notificações** que o envio continua desligado
-  antes de mexer em chamados.
-- Os agentes de inventário das máquinas dos clientes continuam apontando para
-  produção; este ambiente não recebe inventário novo.
+### O que a API não traz
+
+| | |
+|---|---|
+| Histórico de chamados | 23 mil chamados e 4 milhões de linhas de log |
+| Senhas dos usuários | o hash não é exposto; os usuários entram desativados |
+| Plugins | o código precisa ser instalado no servidor; os dados não são expostos |
+| Perfis e permissões | ficam os perfis padrão do GLPI |
+| Anexos | os documentos teriam de ser baixados e reenviados um a um |
+
+## Restaurar um dump do banco (quando precisar de cópia fiel)
+
+O backup pela tela **não existe mais no GLPI 10** — foi removido na 9.4.6 por
+ser instável em bases grandes. Só dá por `mysqldump`, rodado por quem tem
+acesso ao servidor de produção:
+
+```bash
+mysqldump --single-transaction --quick --default-character-set=utf8mb4 \
+  -u <usuario> -p <banco> | gzip > glpi-producao.sql.gz
+```
+
+Com o arquivo em `~/glpi-teste/dump/`:
+
+```bash
+./scripts/restaurar-dump.sh dump/glpi-producao.sql.gz
+```
+
+O script restaura, aponta a URL para o endereço de teste e **desliga o envio de
+e-mails**, para o ambiente de teste não notificar cliente nenhum. Depois dele,
+os logins passam a ser os mesmos de produção, com as mesmas senhas.
