@@ -1,0 +1,65 @@
+# GLPI de teste — cópia do ambiente de produção para experimentar mudanças.
+#
+# O GLPI de produção (helpdesk.broadcastti.com.br) continua intocado: daqui
+# ninguém escreve lá. Este ambiente serve para testar alterações, plugins e
+# campos antes de levar qualquer coisa para produção.
+#
+# Sobe com:
+#   docker compose -f docker-compose.yml --env-file .env up -d
+#
+# A aplicação escuta só em 127.0.0.1:3300; quem publica na internet é o
+# Apache do servidor, com HTTPS.
+
+name: glpi-teste
+
+services:
+  db:
+    image: mariadb:10.11
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${GLPI_DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${GLPI_DB_NAME:-glpi}
+      MARIADB_USER: ${GLPI_DB_USER:-glpi}
+      MARIADB_PASSWORD: ${GLPI_DB_PASSWORD}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # O GLPI exige fuso horário carregado para os relatórios baterem
+      - --default-time-zone=-03:00
+      - --innodb-buffer-pool-size=1G
+      - --max-allowed-packet=256M
+    volumes:
+      - banco:/var/lib/mysql
+      # Lugar para deixar o dump de produção ao restaurar
+      - ./dump:/dump
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  app:
+    image: ghcr.io/glpi-project/glpi:10.0.18
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GLPI_DB_HOST: db
+      GLPI_DB_PORT: 3306
+      GLPI_DB_NAME: ${GLPI_DB_NAME:-glpi}
+      GLPI_DB_USER: ${GLPI_DB_USER:-glpi}
+      GLPI_DB_PASSWORD: ${GLPI_DB_PASSWORD}
+      # Sem isso o GLPI recusa requisições vindas do proxy
+      GLPI_TRUSTED_PROXIES: 127.0.0.1,172.16.0.0/12
+      TIMEZONE: America/Sao_Paulo
+    volumes:
+      - arquivos:/var/glpi/files
+      - config:/var/glpi/config
+    ports:
+      - "127.0.0.1:3300:80"
+
+volumes:
+  banco:
+  arquivos:
+  config:
