@@ -58,6 +58,12 @@ services:
       - config:/var/glpi/config
     ports:
       - "127.0.0.1:3300:80"
+    networks:
+      default:
+        aliases:
+          # Nome pelo qual o Sistema de Atendimento WhatsApp encontra o GLPI
+          # quando entra nesta rede
+          - glpi
 
 volumes:
   banco:
